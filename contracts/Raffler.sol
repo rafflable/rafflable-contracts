@@ -32,10 +32,10 @@ contract Raffler is ERC165Storage, IRaffler, Ownable {
 	// Rafflable Token ID -> Contract address -> Withdrawable Balance
 	mapping(uint256 => mapping(address => uint256)) public withdrawableBalance;
 
-	constructor(address _rafflable) {
-		require(_rafflable.isContract(), "Raffler: invalid rafflable contract");
+	constructor(address _rafflable, address token, uint256 prize) {
 		rafflable = IERC721(_rafflable);
 		_registerInterface(type(IRaffler).interfaceId);
+		_addTokenPrize(token, prize);
 	}
 
 	modifier onlyRafflable {
@@ -49,16 +49,20 @@ contract Raffler is ERC165Storage, IRaffler, Ownable {
 		_;
 	}
 
-	function addTokenPrize(address token, uint256 prize) external onlyOwner {
+	function addTokenPrize(address token, uint256 prize) external override onlyOwner {
 		require(_krc20.length() < _maxTokens, "maximum tokens reached");
 		require(token.isContract(), "must be a contract");
 		require(prize > 0, "prize must be greater than zero");
+		_addTokenPrize(token, prize);
+	}
+
+	function _addTokenPrize(address token, uint256 prize) internal {
 		_krc20.add(token);
 		rafflePrize[token] = prize;
 		emit TokenPrize(token, prize);
 	}
 
-	function _reset() private {
+	function _reset() internal {
 		// Delete values from all sets instead of referencing new ones so that
 		// we do not grow our storage over time.
 		// The while loops are bound since we cannot have more than rafflable's
@@ -67,19 +71,19 @@ contract Raffler is ERC165Storage, IRaffler, Ownable {
 		while (_seen.length() > 0) { _seen.remove(_seen.at(_seen.length() - 1)); }
 	}
 
-	function hat() external view returns (uint256[] memory) {
+	function hat() public view returns (uint256[] memory) {
 		return _hat.values();
 	}
 
-	function hatSize() external view returns (uint256) {
+	function hatSize() public view returns (uint256) {
 		return _hat.length();
 	}
 
-	function claimable() external view returns (uint256[] memory) {
+	function claimable() public view returns (uint256[] memory) {
 		return _claimable.values();
 	}
 
-	function tokens() external view returns (address[] memory) {
+	function tokens() public view returns (address[] memory) {
 		return _krc20.values();
 	}
 
