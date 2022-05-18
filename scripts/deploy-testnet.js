@@ -12,37 +12,23 @@ async function main() {
   // If this script is run directly using `node` you may want to call compile
   // manually to make sure everything is compiled
   // await hre.run('compile');
-
-  const raffleName = 'The Testnet Ticket';
-  const raffleSymbol = 'TTT';
-  const raffleCreator = '0x4C264608F436abAD2A51D13B9836F5f2d02b3E7c';
-  const raffleURI = 'https://static.rafflable.io/tickets/the-testnet-ticket/';
-  const raffleSecretURI = '';
-  const raffleConfigURI = 'https://static.rafflable.io/tickets/the-testnet-ticket/config.json';
-  const raffleAmountTicket = 10000;
-  const raffleTimelock = 0; // not timelocked
-
   const TRAFF = await hre.ethers.getContractFactory("TRAFF");
-  const KRC721Rafflable = await hre.ethers.getContractFactory("KRC721Rafflable");
-  const Raffler = await hre.ethers.getContractFactory("Raffler");
+  const RaffleFactory = await hre.ethers.getContractFactory("RaffleFactory");
+  const RafflableFactory = await hre.ethers.getContractFactory("RafflableFactory");
+  const RafflerFactory = await hre.ethers.getContractFactory("RafflerFactory");
 
-  let krc721 = await KRC721Rafflable.deploy(
-    raffleName, raffleSymbol, raffleConfigURI, raffleURI,
-    raffleSecretURI, raffleAmountTicket, raffleTimelock, raffleCreator
-  );
-  krc721 = await ethers.getContractAt("KRC721Rafflable", krc721.address);
-  console.log("KRC721Rafflable -> ", krc721.address);
-  let traff = await TRAFF.deploy();
-  await traff.deployed();
-  await krc721.addTokenCost(traff.address, '50000000'); // 50 RUSD-T
-  console.log("  addTokenCost():", traff.address,":", '50000000');
-
-  let raffler = await Raffler.deploy(krc721.address);
-  await raffler.deployed();
-  console.log("Raffler -> ", raffler.address);
-  await raffler.addTokenPrize(traff.address, '5000000000'); // 5000 RUSD-T
-  console.log("  addTokenAndPrize():", traff.address,":", '5000000000');
-  await krc721.setRaffler(raffler.address);
+  const traff = await TRAFF.deploy();
+  console.log('TRAFF deployed at', traff.address);
+  const raffle = await RaffleFactory.deploy([traff.address]);
+  console.log('RaffleFactory deployed at', raffle.address);
+  const rafflable = await RafflableFactory.deploy(raffle.address);
+  console.log('RafflableFactory deployed at', rafflable.address);
+  const raffler = await RafflerFactory.deploy(raffle.address);
+  console.log('RafflerFactory deployed at', raffler.address);
+  const r = await hre.ethers.getContractAt("RaffleFactory", raffle.address);
+  await r.setRafflableFactory(rafflable.address);
+  await r.setRafflerFactory(raffler.address);
+  console.log('Updated RaffleFactory.');
 }
 
 // We recommend this pattern to be able to use async/await everywhere
