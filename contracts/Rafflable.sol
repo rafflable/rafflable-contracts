@@ -11,36 +11,33 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-contract KRC721Rafflable is
+contract Rafflable is
 	ERC721,
 	ERC721Enumerable,
 	ERC721Royalty,
 	Ownable
 {
-	using EnumerableSet for EnumerableSet.AddressSet;
 	using Address for address;
 	using Counters for Counters.Counter;
 
-	address private _creator;
+	address public creator;
 	Counters.Counter private _tokenIds;
-	string private _uri;
+	string private _baseUri;
 	string private _secretUri;
 	bool private _minting;
 
-	EnumerableSet.AddressSet private _krc20;
-	mapping(address => uint256) public cost;
-	uint256 public immutable cap;
+	uint256 public cap;
 	IRaffler public raffler;
 	string public configUri;
 	uint256 public timelock;
+	uint256 public cost;
+	IERC20 public token;
 
 	event RafflerUpdate(address to);
-	event TokenCost(address token, uint256 cost);
 
 	modifier onlyCreator() {
-		require(creator() == msg.sender, "caller is not the creator");
+		require(creator == msg.sender, "caller is not the creator");
 		_;
 	}
 
@@ -52,44 +49,37 @@ contract KRC721Rafflable is
 	}
 
 	constructor(
-		string memory name,
-		string memory symbol,
+		string memory _name,
 		string memory _configUri,
-		string memory uri,
+		string memory baseUri,
 		string memory secretUri,
 		uint256 _cap,
 		uint256 _timelock,
-		address __creator
-	) ERC721(name, symbol) {
-		require(_cap > 0, "max supply is 0");
-		_uri = uri;
+		address _creator,
+		address _token,
+		uint256 _cost
+	) ERC721(_name, 'RAFFLABLE') {
+		_baseUri = baseUri;
 		_secretUri = secretUri;
 		configUri = _configUri;
 		cap = _cap;
+		token = IERC20(_token);
+		cost = _cost;
 		timelock = _timelock;
-		_creator = __creator;
-	}
-
-	function addTokenCost(address token, uint256 _cost) external onlyOwner {
-		require(token.isContract(), "must be a contract");
-		require(_cost > 0, "cost must be greater than zero");
-		_krc20.add(token);
-		cost[token] = _cost;
-		emit TokenCost(token, _cost);
+		creator = _creator;
 	}
 
 	function _burn(uint256 tokenId) internal override(ERC721, ERC721Royalty) {
 		super._burn(tokenId);
 	}
 
-	function mint(uint256 amount, address token) whenUnlocked external {
-		require(token != address(0) && _krc20.contains(token), "token not supported");
+	function mint(uint256 amount) whenUnlocked external {
 		require(raffler != IRaffler(address(0)), "missing raffler");
 		require(amount > 0, "amount must be above 0");
 		require(totalSupply() + amount <= cap, "max supply reached");
-		require(IERC20(token).transferFrom(msg.sender, address(this), amount * cost[token]), "not paid");
+		require(token.transferFrom(msg.sender, address(this), amount * cost), "not paid");
 
-		uint256 prize = cost[token] / 10; // Hardcoded. 10% of sales.
+		uint256 prize = cost / 10; // Hardcoded. 10% of sales.
 		uint256 max = totalSupply() + amount;
 		uint256 seed = uint256(keccak256(abi.encodePacked(
 			block.difficulty,
@@ -105,7 +95,7 @@ contract KRC721Rafflable is
 			// It is tempting to optimize and transfer the whole prize first but we would
 			// skew the draw of the raffle.  Prefer a fair play rather than optimization
 			// here.
-			IERC20(token).transfer(address(raffler), prize);
+			token.transfer(address(raffler), prize);
 			raffler.draw(bytes32(seed));
 			seed -= _tokenIds.current();
 		}
@@ -166,25 +156,14 @@ contract KRC721Rafflable is
 		if (str.length > 0 && (totalSupply() >= cap)) {
 			return _secretUri;
 		}
-		return _uri;
+		return _baseUri;
 	}
  
 	function tokenURI(uint256 tokenId) public view override returns (string memory) {
 		return string(abi.encodePacked(_baseURI(), Strings.toString(tokenId), ".json"));
 	}
 
-	function tokens() external view returns (address[] memory) {
-		return _krc20.values();
-	}
-
-	function creator() public view  virtual returns (address) {
-		return _creator;
-	}
-
 	function withdraw() external onlyCreator {
-		for (uint8 i = 0; i < _krc20.length(); i++) {
-			IERC20 krc20 = IERC20(_krc20.at(i));
-			krc20.transfer(msg.sender, krc20.balanceOf(address(this)));
-		}
+		token.transfer(msg.sender, token.balanceOf(address(this)));
 	}
 }
