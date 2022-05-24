@@ -23,7 +23,7 @@ contract TRAFF {
 	}
 
 	function faucet() public returns (bool) {
-		balanceOf[msg.sender] = 1000000000;
+		balanceOf[msg.sender] += 1000000000;
 		return true;
     }
 

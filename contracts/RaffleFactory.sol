@@ -16,7 +16,14 @@ contract RaffleFactory is Ownable {
 	IRafflableFactory public rafflable;
 	IRafflerFactory public raffler;
 
-	event RafflePublished(address rafflable, address raffler, address creator);
+	event RafflePublished(
+		address creator,
+		address token,
+		uint256 cost,
+		uint256 prize,
+		string title,
+		string configUri
+	);
 
 	constructor(address[] memory tokens)  {
 		for (uint8 i = 0; i < tokens.length; i++) {
@@ -41,7 +48,7 @@ contract RaffleFactory is Ownable {
 	}
 
 	function publish(
-		string memory name,
+		string memory title,
 		string memory configUri,
 		string memory baseUri,
 		string memory secretUri,
@@ -53,8 +60,9 @@ contract RaffleFactory is Ownable {
 	) public {
 		require(enabled, "publishing is disabled");
 		require(_tokens.contains(token), "token not allowed");
+		require(prize >= cost, "prize cannot be lower than cost");
 		address newRafflable = rafflable.create(
-			name,
+			title,
 			configUri,
 			baseUri,
 			secretUri,
@@ -67,6 +75,13 @@ contract RaffleFactory is Ownable {
 		address newRaffler = raffler.create(newRafflable, token, prize);
 		IRafflable(newRafflable).setRaffler(newRaffler);
 		rafflables.push(newRafflable);
-		emit RafflePublished(newRafflable, newRaffler, msg.sender);
+		emit RafflePublished(
+			msg.sender,
+			token,
+			cost,
+			prize,
+			title,
+			configUri
+		);
 	}
 }

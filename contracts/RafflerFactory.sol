@@ -11,6 +11,8 @@ contract RafflerFactory {
 		_;
 	}
 
+	event RafflerCreated(address raffler, address token, uint256 prize);
+
 	constructor(address _factory) {
 		factory = _factory;
 	}
@@ -22,6 +24,7 @@ contract RafflerFactory {
 	) external onlyFactory returns (address) {
 		Raffler raffler = new Raffler(rafflable, token, prize);
 		raffler.transferOwnership(factory);
+		emit RafflerCreated(address(raffler), token, prize);
 		return address(raffler);
 	}
 }

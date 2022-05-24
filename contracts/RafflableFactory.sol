@@ -11,6 +11,8 @@ contract RafflableFactory {
 		_;
 	}
 
+	event RafflableCreated(address rafflable, uint256 cap, uint256 timelock);
+
 	constructor(address _factory) {
 		factory = _factory;
 	}
@@ -31,6 +33,7 @@ contract RafflableFactory {
 			cap, timelock, creator, token, cost
 		);
 		rafflable.transferOwnership(factory);
+		emit RafflableCreated(address(rafflable), cap, timelock);
 		return address(rafflable);
 	}
 }
