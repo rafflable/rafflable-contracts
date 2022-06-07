@@ -25,7 +25,7 @@ contract Rafflable is
 	Counters.Counter private _tokenIds;
 	string private _baseUri;
 	string private _secretUri;
-	bool private _minting;
+	uint256 private _prize;
 
 	uint256 public cap;
 	IRaffler public raffler;
@@ -67,39 +67,19 @@ contract Rafflable is
 		cost = _cost;
 		timelock = _timelock;
 		creator = _creator;
+		_prize = cost / 10;
 	}
 
 	function _burn(uint256 tokenId) internal override(ERC721, ERC721Royalty) {
 		super._burn(tokenId);
 	}
 
-	function mint(uint256 amount) whenUnlocked external {
-		require(raffler != IRaffler(address(0)), "missing raffler");
-		require(amount > 0, "amount must be above 0");
-		require(totalSupply() + amount <= cap, "max supply reached");
-		require(token.transferFrom(msg.sender, address(this), amount * cost), "not paid");
-
-		uint256 prize = cost / 10; // Hardcoded. 10% of sales.
-		uint256 max = totalSupply() + amount;
-		uint256 seed = uint256(keccak256(abi.encodePacked(
-			block.difficulty,
-			block.timestamp,
-			msg.sender,
-			amount
-		)));
-		_minting = true;
-		while (_tokenIds.current() < max) {
-			_tokenIds.increment();
-			_safeMint(msg.sender, _tokenIds.current());
-			raffler.add(_tokenIds.current(), (seed % _tokenIds.current()) + 1);
-			// It is tempting to optimize and transfer the whole prize first but we would
-			// skew the draw of the raffle.  Prefer a fair play rather than optimization
-			// here.
-			token.transfer(address(raffler), prize);
-			raffler.draw(bytes32(seed));
-			seed -= _tokenIds.current();
-		}
-		_minting = false;
+	function mint() whenUnlocked external {
+		require(totalSupply() + 1 <= cap, "max supply reached");
+		require(token.transferFrom(msg.sender, address(this), cost), "not paid");
+		token.transfer(address(raffler), _prize);
+		_tokenIds.increment();
+		_safeMint(msg.sender, _tokenIds.current());
 	}
 
 	function _beforeTokenTransfer(address from, address to, uint256 tokenId)
@@ -115,17 +95,15 @@ contract Rafflable is
 		override(ERC721)
 	{
 		super._afterTokenTransfer(from, to, tokenId);
-		if (!_minting && totalSupply() > 0 && raffler != IRaffler(address(0))) {
-			bytes32 seed = keccak256(abi.encodePacked(
-				block.difficulty,
-				block.timestamp,
-				from,
-				to,
-				tokenId
-			));
-			raffler.add(tokenId, uint256(seed) % totalSupply() + 1); 
-			raffler.draw(seed);
-		}
+		bytes32 seed = keccak256(abi.encodePacked(
+			block.difficulty,
+			block.timestamp,
+			from,
+			to,
+			tokenId
+		));
+		raffler.add(tokenId, uint256(seed) % totalSupply() + 1); 
+		raffler.draw(seed);
 	}
 
 	function supportsInterface(bytes4 interfaceId)

@@ -19,8 +19,15 @@ contract Raffler is ERC165Storage, IRaffler, Ownable {
 	uint8 private constant _maxTokens = 10;
 	EnumerableSet.AddressSet private _krc20;
 
-	EnumerableSet.UintSet private _hat;
-	EnumerableSet.UintSet private _seen;
+	struct Draw {
+		EnumerableSet.UintSet hat;
+		EnumerableSet.UintSet seen;
+		uint256 winner;
+	}
+
+	Draw[] private _draws;
+	uint256 private _index;
+
 	EnumerableSet.UintSet private _claimable;
 
 	// Contract address -> Prize to win
@@ -36,6 +43,7 @@ contract Raffler is ERC165Storage, IRaffler, Ownable {
 		rafflable = IERC721(_rafflable);
 		_registerInterface(type(IRaffler).interfaceId);
 		_addTokenPrize(token, prize);
+		_reset();
 	}
 
 	modifier onlyRafflable {
@@ -63,20 +71,30 @@ contract Raffler is ERC165Storage, IRaffler, Ownable {
 	}
 
 	function _reset() internal {
-		// Delete values from all sets instead of referencing new ones so that
-		// we do not grow our storage over time.
-		// The while loops are bound since we cannot have more than rafflable's
-		// totalSupply() elements in them.
-		while (_hat.length() > 0) { _hat.remove(_hat.at(_hat.length() - 1)); }
-		while (_seen.length() > 0) { _seen.remove(_seen.at(_seen.length() - 1)); }
+		_draws.push();
+		_index = _draws.length - 1;
+	}
+
+	function counter() public view returns (uint256) {
+		return _draws.length;
 	}
 
 	function hat() public view returns (uint256[] memory) {
-		return _hat.values();
+		return hatOf(_index);
 	}
 
-	function hatSize() public view returns (uint256) {
-		return _hat.length();
+	function hatOf(uint256 index) public view returns (uint256[] memory) {
+		require(index < _draws.length, "out of bound value");
+		Draw storage _draw = _draws[index];
+		return _draw.hat.values();
+	}
+
+	function winners() public view returns (uint256[] memory) {
+		uint256[] memory values = new uint256[](_draws.length-1);
+		for (uint256 i; i+1 < _draws.length; i++) {
+			values[i] = _draws[i].winner;
+		}
+		return values;
 	}
 
 	function claimable() public view returns (uint256[] memory) {
@@ -97,7 +115,8 @@ contract Raffler is ERC165Storage, IRaffler, Ownable {
 		// Do not add to the hat if tokenId added a ticket to the hat already.
 		// This prevents an attacker to shuffle its own tokens between its wallets
 		// until its own ticket is put into the hat.
-		if (_seen.add(tokenId) && _hat.add(ticketId)) {
+		Draw storage _draw = _draws[_index];
+		if (_draw.seen.add(tokenId) && _draw.hat.add(ticketId)) {
 			emit TicketAdded(tokenId, ticketId);
 			return true;
 		}
@@ -118,20 +137,19 @@ contract Raffler is ERC165Storage, IRaffler, Ownable {
 			balances[i] = prize;
 		}
 		if (prizeToWin) {
-			uint256 index = uint256(
-				keccak256(abi.encodePacked(block.number, block.timestamp, seed))
-			) % _hat.length();
-			uint256 winner = _hat.at(index);
+			Draw storage _draw = _draws[_index];
+			uint256 index = uint256(seed) % _draw.hat.length();
+			_draw.winner = _draw.hat.at(index);
 			for (uint8 i = 0; i < _krc20.length(); i++) {
 				if (balances[i] > 0) {
 					address krc20 = _krc20.at(i);
 					totalWithdrawableBalance[krc20] += balances[i];
-					withdrawableBalance[winner][krc20] += balances[i];
-					emit PrizeWon(winner, krc20, balances[i]);
+					withdrawableBalance[_draw.winner][krc20] += balances[i];
+					emit PrizeWon(_draw.winner, krc20, balances[i]);
 				}
 			}
 
-			_claimable.add(winner);
+			_claimable.add(_draw.winner);
 			_reset();
 		}
 		return prizeToWin;
